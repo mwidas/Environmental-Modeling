@@ -1,0 +1,130 @@
+---
+title: "sobol"
+author: "Melissa Widas"
+output: html_document
+date: '2022-04-26'
+---
+
+# Part 1
+
+Choose one of the 3 papers below that provide an example of sensitivity analysis of model parameters. After going through the paper, write a paragraph describing how results of the sensitivity analysis reported on in the paper might contribute to understanding (or prediction) within an environmental problem solving or management context.
+
+For this assignment I chose to read sobol sensitivity analysis for risk assessment of uranium in groundwater by Kumar et al.. The results of the sobol sensitivity analysis allowed for the distinction and understanding of risks for adults versus children. The analysis determined that children were more sensitive to water intake rate (IR) and overall the ingestion dose assessment. Meanwhile the Sobol analysis showed that for an adult age group the dermal risk assessment has more risk and that the most important parameters for determining these were the fraction of contact and the concentration of uranium in groundwater. These results will allow for more informed decision making when it comes to addressing other areas that also have suspected risk of high uranium concentrations in groundwater. Furthermore these inferences can be used as a first line of planning for community members in these communities. For example, if an area has high levels of uranium in the groundwater but is mainly an adult aged community perhaps the first area addressed is the factors that impact dermal absorption. Alternatively, if the community has a large number of children present the first line of action can be geared towards impacting the water intake rate.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(sensitivity)
+library(tidyverse)
+library(gridExtra)
+library(purrr)
+library(ggpubr)
+library(here)
+```
+
+# Part 2
+
+#  Example 
+Atmospheric Conductance as a function of windspeed, vegetation height and parameters
+
+```{r, message=FALSE}
+source(here("week3","R", "Catm.R"))
+
+# generate two examples of random number from parameter distributions
+
+np=1000
+k_o = rnorm(mean=0.1,sd=0.1*0.01, n=np)
+k_d = rnorm(mean=0.7, sd=0.7*0.01, n=np)
+v = rnorm(mean=300, sd=50, n=np)
+height = runif(min=3.5, max=5.5, n=np)
+
+X1 = cbind.data.frame(k_o, k_d, v, height=height)
+
+# repeat sampling
+k_o = rnorm(mean=0.1,sd=0.1*0.01, n=np)
+k_d = rnorm(mean=0.7, sd=0.7*0.01, n=np)
+v = rnorm(mean=300, sd=50, n=np)
+height = runif(min=3.5, max=5.5, n=np)
+
+X2 = cbind.data.frame(k_o, k_d, v, height=height)
+
+# there are different versions of sobol functions that have different approaches for estimating parameters and indices, we use an approach implemented by jansen 
+
+sens_Catm_Sobol = sobolSalt(model = NULL, X1, X2, nboot = 100)
+
+
+# Take a look at the Sobol generated sensitivity object
+# your parameters sets for sensitivity analysis are in X
+```
+
+# Sobol Indices
+
+```{r, sobolrun}
+# run model for all parameter sets
+# make sure you give the parameters names
+
+parms = as.data.frame(sens_Catm_Sobol$X)
+colnames(parms)= colnames(X1)
+res = pmap_dbl(parms, Catm)
+
+# model has been run for all parameters, give the sobol object those results 
+# this line could be called something else if you have multiple metrics you want
+sens_Catm_Sobol = sensitivity::tell(sens_Catm_Sobol,res, res.names="ga")
+
+# main effect:  partitions variance (main effect without co-variance) - sums approximately to one
+sens_Catm_Sobol$S
+# useful to add names
+row.names(sens_Catm_Sobol$S) = colnames(parms)
+sens_Catm_Sobol$S
+
+# total effect - accounts for parameter interactions
+row.names(sens_Catm_Sobol$T) = colnames(parms)
+sens_Catm_Sobol$T
+
+# model output is most sensitive to the effect of kd
+
+# Both the main effect and total effect can tell us something about how the parameter influences results
+print(sens_Catm_Sobol)
+
+```
+ 
+# Plotting
+
+* uncertainty in the output
+
+* relationships you are interested in
+
+* response to most sensitive parameters
+
+```{r, sobolplot}
+# graph two most sensitive parameters
+both = cbind.data.frame(parms, gs=sens_Catm_Sobol$y)
+
+# look at overall gs sensitvity to uncertainty
+ggplot(both, aes(x=gs))+
+  geom_histogram()+
+  geom_vline(xintercept=mean(both$gs), col="red") +
+  theme_minimal()
+
+# look at response of conductance to the two most important variables
+ggplot(both, aes(v, gs, color=height))+
+  geom_point()+
+  scale_color_viridis_c(option = "A") +
+  labs(y="Conductance (mm/s)", x="Windspeed (cm/s) parameter")
+
+# use second most sensitive parameter (using most important as color)
+ggplot(both, aes(height, gs, color=v))+
+  geom_point()+
+  scale_color_viridis_c(option = "A") +
+  labs(y="Conductance (mm/s)", x="Height (m) parameter")
+
+```
+
+### Comment on what this tells you about how atmospheric conductance and its sensitivity to variation in windspped differs in this setting as compared to the setting that we examined in class where windspeed was lower and less variable and vegetation was taller.
+
+At higher winsdpeeds and shorter vegetation levels atmospheric conductance was most impacted by windspeed and secondarily impacted by vegetation height (Total Indices v = 0.81, height=0.16). As compared to the setting that we examined in class, where windspeed was lower and less variable and vegetation was taller, the atmospheric conductance was most sensitive to the kd and second most sensitive to the ko parameters (Total Indices k_d=0.52, k_o=0.27). This means that atmospheric conductance is sensitive to different parameters given different settings and events such as different locations, and weather patterns.
+
+
+
+
+
