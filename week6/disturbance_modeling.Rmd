@@ -1,0 +1,144 @@
+---
+title: "disturbance modeling"
+output: html_document
+date: '2022-04-28'
+---
+
+```{r}
+
+library(tidyverse)
+library(deSolve)
+library(sensitivity)
+
+# pull in 
+source("week6/R/dexppopk.R")
+source("week6/R/dharvest.R")
+source("week6/R/dharvestfixed.R")
+```
+
+Exogenous model
+```{r}
+# set parameters
+forestparms = list(K=100, r=0.2)
+
+#create a time sequence
+tm = seq(from=1, to=100)
+
+# start a small forest
+postfire_initial_carbon = 2
+
+#watch it grow
+forest = ode(y=postfire_initial_carbon, times = tm, dexppopK, parms = forestparms)
+
+colnames(forest)=c("time", "carbon")
+
+ggplot(as.data.frame(forest), aes(time, carbon)) +
+  geom_line()
+```
+
+Endogenous example with harvesting
+```{r}
+#create a time sequence
+tm10 = seq(from=1, to=100)
+
+# set an initial level of carbon
+Cinitial = 30
+
+# set parameters
+forest10parms = list(K=200, r=0.2, harv=0.1)
+
+#watch it grow
+harvest10 = ode(y=Cinitial, times = tm10, dharvest, parms = forest10parms)
+
+colnames(harvest10)=c("time", "carbon")
+
+ggplot(as.data.frame(harvest10), aes(time, carbon)) +
+  geom_point()
+```
+
+How do different harvest levels impact the forest trajectory? Let's use a wrapper function
+
+```{r}
+# vary the harvest rates from 0 - 0.5
+harvestr = seq(from=0.0, to= 0.5, by = 0.025)
+
+# using a wrapper function to return the carbon trajectories from ODE output
+getcarbon = function(Cinitial, tm, harv, K, r, hfunc){
+  gps = list(harv = harv, r = r, K = K)
+  res = ode(Cinitial, tm, hfunc, gps)
+  colnames(res)=c("time", "carbon")
+  res = as.data.frame(res)
+  return(carbon=res$carbon)
+  
+}
+
+# apply function to all harvest values 
+res = harvestr |> 
+  map_dfc(~getcarbon(Cinitial=Cinitial,
+                     tm = tm,
+                     K = 100,
+                     r = 0.2,
+                     hfunc = dharvest,
+                     harv = .x))
+
+# rows are time, columns are carbon for each harvest scenario
+colnames(res)=harvestr
+
+res=as.data.frame(res)
+
+res$time=tm
+head(res)
+
+# time to plot
+resl = gather(res, key = "harvestr", value = "carbon", -time)
+
+ggplot(resl, aes(time, carbon, col=harvestr)) +
+  geom_line()
+
+# notice that stable forest value changes with harvest rates
+# notes that some forests are not stable - or forest size goes to zero
+
+# what does the first 10 years look like 
+ggplot(subset(resl, time < 10),
+       aes(time, carbon, col = harvestr)) +
+  geom_line()
+```
+
+```{r}
+# vary the growth rates from 0 - 0.5
+varyr = seq(from=0.0, to= 0.5, by = 0.025)
+
+# using a wrapper function to return the carbon trajectories from ODE output
+getcarbon = function(Cinitial, tm, harv, K, r, hfunc){
+  gps = list(harv = harv, r = r, K = K)
+  res = ode(Cinitial, tm, hfunc, gps)
+  colnames(res)=c("time", "carbon")
+  res = as.data.frame(res)
+  return(carbon=res$carbon)
+  
+}
+
+# apply function to all harvest values 
+res = harvestr |> 
+  map_dfc(~getcarbon(Cinitial=Cinitial,
+                     tm = tm,
+                     K = 100,
+                     r = .x,
+                     hfunc = dharvest,
+                     harv = 0.1))
+
+# rows are time, columns are carbon for each harvest scenario
+colnames(res)=varyr
+
+res=as.data.frame(res)
+
+res$time=tm
+head(res)
+
+# time to plot
+resl = gather(res, key = "varyr", value = "carbon", -time)
+
+ggplot(resl, aes(time, carbon, col=varyr)) +
+  geom_line()
+```
+
